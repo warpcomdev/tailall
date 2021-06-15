@@ -23,6 +23,8 @@ type collector struct {
 	Lines chan string
 	// LogStart identifies log line starts
 	LogStart string
+	// Skip lines containing this pattern
+	Skip []string
 }
 
 type eventType int
@@ -104,11 +106,12 @@ func scanFolder(done chan struct{}, folder string) chan newFile {
 	return filehit
 }
 
-func Monitor(ctx context.Context, folder string, buffer int, logStart string) {
+func Monitor(ctx context.Context, folder string, buffer int, skip []string, logStart string) {
 
 	c := collector{
 		Lines:    make(chan string, buffer),
 		LogStart: logStart,
+		Skip:     skip,
 	}
 	go c.output()
 
@@ -208,10 +211,21 @@ func (c *collector) input(done chan struct{}, filename string, seek_end bool) {
 				break
 			}
 			lineStr := line.Text
+			if c.Skip != nil {
+				for _, skip := range c.Skip {
+					if strings.Contains(lineStr, skip) {
+						lineStr = ""
+						break
+					}
+				}
+			}
+			if lineStr == "" {
+				break
+			}
 			switch {
 			case c.LogStart == "":
 				// No prefix to merge, just flush line
-				c.Lines <- line.Text
+				c.Lines <- lineStr
 				break
 			case strings.HasPrefix(lineStr, c.LogStart) || len(buffer) >= MAXBUFFER:
 				flush()
@@ -232,6 +246,7 @@ func main() {
 	folder := parser.String("f", "folder", &argparse.Options{Required: true, Help: "Path to log folder"})
 	logStart := parser.String("l", "logstart", &argparse.Options{Required: false, Help: "Merge lines starting with this prefix"})
 	debug := parser.Flag("d", "debug", &argparse.Options{Required: false, Help: "Enabled debug trace"})
+	skip := parser.StringList("s", "skip", &argparse.Options{Required: false, Help: "Skip lines containing this text"})
 	// Parse input
 	if err := parser.Parse(os.Args); err != nil {
 		panic(err)
@@ -255,10 +270,14 @@ func main() {
 		cancel()
 	}()
 
-	// Start moniyot
+	// Start monitor
+	logstartParam := ""
 	if logStart != nil {
-		Monitor(ctx, *folder, MAXBUFFER, *logStart)
-	} else {
-		Monitor(ctx, *folder, MAXBUFFER, "")
+		logstartParam = *logStart
 	}
+	skipParam := []string{}
+	if skip != nil {
+		skipParam = *skip
+	}
+	Monitor(ctx, *folder, MAXBUFFER, skipParam, logstartParam)
 }
