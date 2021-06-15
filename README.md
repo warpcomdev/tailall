@@ -17,3 +17,8 @@ This application is provided as a docker container. It can be run like this, for
 ```bash
 docker run --rm -it -v /path/to/log/folder:/logs:ro warpcomdev/tailall:latest -f /logs
 ```
+
+## Caveats
+
+- Currently does not support removal of log files. If a log file is removed, it won't be tailed when created again.
+- New log files are scanned every 10 seconds. So up to 10 seconds of log can accumulate in a new log file before tailall catches up.
