@@ -106,6 +106,18 @@ func scanFolder(done chan struct{}, folder string) chan newFile {
 	return filehit
 }
 
+// Keep the given line?
+func (c *collector) Keep(lineStr string) bool {
+	if c.Skip != nil {
+		for _, skip := range c.Skip {
+			if strings.Contains(lineStr, skip) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func Monitor(ctx context.Context, folder string, buffer int, skip []string, logStart string) {
 
 	c := collector{
@@ -193,7 +205,9 @@ func (c *collector) input(done chan struct{}, filename string, seek_end bool) {
 	buffer := make([]string, 0, MAXBUFFER)
 	flush := func() {
 		if len(buffer) > 0 {
-			c.Lines <- strings.Join(buffer, " ")
+			if c.Keep(buffer[0]) {
+				c.Lines <- strings.Join(buffer, " ")
+			}
 		}
 		buffer = buffer[:0]
 	}
@@ -211,21 +225,15 @@ func (c *collector) input(done chan struct{}, filename string, seek_end bool) {
 				break
 			}
 			lineStr := line.Text
-			if c.Skip != nil {
-				for _, skip := range c.Skip {
-					if strings.Contains(lineStr, skip) {
-						lineStr = ""
-						break
-					}
-				}
-			}
 			if lineStr == "" {
 				break
 			}
 			switch {
 			case c.LogStart == "":
 				// No prefix to merge, just flush line
-				c.Lines <- lineStr
+				if c.Keep(lineStr) {
+					c.Lines <- lineStr
+				}
 				break
 			case strings.HasPrefix(lineStr, c.LogStart) || len(buffer) >= MAXBUFFER:
 				flush()
