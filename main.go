@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -40,6 +42,23 @@ type newFile struct {
 	Filename string
 	// freshly scanned
 	EventType eventType
+}
+
+// localIP returns the non loopback local IP of the host
+func localIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		// check the address type and if it is not a loopback the display it
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
 }
 
 func scanFolder(done chan struct{}, folder string) chan newFile {
@@ -185,7 +204,8 @@ func (c *collector) input(done chan struct{}, filename string, seek_end bool) {
 	}
 	// OJO!!!! Solo llamar a t.Cleanup si no se va a volver a reabrir
 	// el fichero. En otro caso, mejor llamar a t.Stop.
-	defer t.Cleanup()
+	// defer t.Cleanup()
+	defer t.Stop()
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -231,7 +251,7 @@ func (c *collector) input(done chan struct{}, filename string, seek_end bool) {
 				flush()
 				fallthrough
 			default:
-				buffer = append(buffer, lineStr)
+				buffer = append(buffer, strings.TrimSpace(lineStr))
 			}
 		case <-ticker.C:
 			flush()
@@ -246,7 +266,7 @@ func main() {
 	folder := parser.String("f", "folder", &argparse.Options{Required: true, Help: "Path to log folder"})
 	logStart := parser.String("l", "logstart", &argparse.Options{Required: false, Help: "Merge lines starting with this prefix"})
 	debug := parser.Flag("d", "debug", &argparse.Options{Required: false, Help: "Enabled debug trace"})
-	skip := parser.StringList("s", "skip", &argparse.Options{Required: false, Help: "Skip lines containing this text"})
+	skip := parser.StringList("s", "skip", &argparse.Options{Required: false, Help: "Skip lines containing this text (use %IP% for local IP)"})
 	// Parse input
 	if err := parser.Parse(os.Args); err != nil {
 		panic(err)
@@ -278,6 +298,12 @@ func main() {
 	skipParam := []string{}
 	if skip != nil {
 		skipParam = *skip
+		if ip := localIP(); ip != "" {
+			log.Info(fmt.Sprintf("Replacing %%IP%% with %s in skip strings", ip))
+			for i := 0; i < len(skipParam); i++ {
+				skipParam[i] = strings.ReplaceAll(skipParam[i], "%IP%", ip)
+			}
+		}
 	}
 	Monitor(ctx, *folder, MAXBUFFER, skipParam, logstartParam)
 }
