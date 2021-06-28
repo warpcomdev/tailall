@@ -352,7 +352,7 @@ func main() {
 	profileParam := 0
 	if profile != nil {
 		profileParam = *profile
-		if profileParam <= 1024 {
+		if profileParam > 0 && profileParam <= 1024 {
 			log.Fatal(fmt.Sprintf("Cannot listen in port %d - only ports > 1024 allowed", *profile))
 			profileParam = 0
 		}
