@@ -4,6 +4,6 @@ WORKDIR /app
 COPY go.mod go.sum main.go /app/
 RUN  CGO_ENABLED=0 go build
 
-FROM scratch
+FROM busybox:1.33
 COPY --from=builder /app/tailall /tailall
 ENTRYPOINT ["/tailall"]
